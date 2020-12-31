@@ -23,6 +23,8 @@ class Pry
     attr_accessor :quiet
     attr_accessor :last_internal_error
     attr_accessor :config
+    attr_accessor :io_lock
+    attr_accessor :io_lock_acquired
 
     def_delegators(
       :@config, :input, :input=, :output, :output=, :commands,
@@ -168,6 +170,12 @@ you can add "Pry.config.windows_console_warning = false" to your pryrc.
       return
     end
 
+    unless io_lock.acquire
+      output.puts "ERROR: Unable to start Pry - you already have an active Pry session."
+      return
+    end
+    self.io_lock_acquired = true
+
     options[:target] = Pry.binding_for(target || toplevel_binding)
     initial_session_setup
     final_session_setup
@@ -189,6 +197,8 @@ you can add "Pry.config.windows_console_warning = false" to your pryrc.
   rescue Pry::TooSafeException
     puts "ERROR: Pry cannot work with $SAFE > 0"
     raise
+  ensure
+    io_lock.release if io_lock_acquired
   end
 
   # Execute the file through the REPL loop, non-interactively.
@@ -326,6 +336,7 @@ Readline version #{Readline::VERSION} detected - will not auto_resize! correctly
     self.current_line = 1
     self.line_buffer = [""]
     self.eval_path = "(pry)"
+    self.io_lock = Pry::IOLock.new
   end
 
   # Basic initialization.
